@@ -1,5 +1,7 @@
-from random import random
+import numpy as np
 from math import exp
+from random import random, seed
+from sklearn.metrics import log_loss
 
 
 class FeedForward:
@@ -9,6 +11,11 @@ class FeedForward:
     :author Isaac Buitrago
     """
     def __init__(self, n_inputs, n_hidden, n_outputs):
+
+        # seed random number generator
+        seed(1)
+
+        self.n_outputs = n_outputs
         self.network = list()
 
         hidden_layer = [{'weights': [random() for i in range(n_inputs + 1)]} for i in range(n_hidden)]
@@ -18,27 +25,28 @@ class FeedForward:
         self.network.append(output_layer)
 
 
-    def fit(self, dataset, lr, n_epochs, n_outputs):
-
+    def fit(self, x, y, lr, n_epochs):
+        """
+        Trains network with backpropagation using stochastic gradient descent
+        :param x: images to train on
+        :param y: target vector with labels
+        :param lr: learning rate
+        :param n_epochs: training epochs
+        """
         # train model on dataset
         for epoch in range(n_epochs):
-            for row in dataset:
-                outputs = self._forward(row)
-                expected = [0 for i in range(n_outputs)]
-                expected[row[-1]] = 1
-                self._backwards(expected)
-                self._update_weights(row, lr)
+            err = 0
+            for img, target in zip(x, y):
+                outputs = self._forward(img)
+                target = np.array([0 if i != target else 1 for i in range(self.n_outputs)]).reshape((1, -1))
+                err += log_loss(target, outputs)
+                self._backwards(target)
+                self._update_weights(img, lr)
+                print(f"> Epoch= {epoch}, lrate={lr}, error={err:.3f}")
 
     def predict(self, row):
         outputs = self._forward(row)
         return outputs.index(max(outputs))
-
-    def accuracy(self, actual, predicted):
-        correct = 0
-        for i in range(len(actual)):
-            if actual[i] == predicted[i]:
-                correct += 1
-        return correct / float(len(actual)) * 100.0
 
     def _activate(self, weights, inputs):
         """
@@ -50,11 +58,14 @@ class FeedForward:
         return active
 
 
-    def _forward(self, row):
+    def _forward(self, img : np.ndarray) -> np.ndarray:
         """
         Forward propagate a row of inputs through the network
+        and returns a probability distribution over the classes.
+        :img: vectorized image
+        :returns ndarray of probabilities for ten classes
         """
-        inputs = row
+        inputs = img
         for layer in self.network:
             new_inputs = []
 
@@ -63,19 +74,38 @@ class FeedForward:
                 neuron['output'] = self._transfer(activation)
                 new_inputs.append(neuron['output'])
             inputs = new_inputs
-        return inputs
+
+        inputs = np.array(inputs)
+
+        # probability distribution over classes
+        classes = self._softmax(inputs).reshape((1, -1))
+
+        return classes
 
     def _transfer(self, activation):
         """
-        Implements sigmoid to determine if a nueron
-        is fired or not
+        Transfers neuron activation
         """
         return 1.0 / (1.0 + exp(-activation))
 
-    def _backwards(self, expected):
+    def _transfer_derivative(self, output):
+        """
+        Calculate derivative of neuron output
+        :param output: neuron output
+        :return:
+        """
+        return output * (1 - output)
+
+    def _backwards(self, target):
+        """
+        backward propagates the error
+        :param target:
+        """
         for i in reversed(range(len(self.network))):
             layer = self.network[i]
             errors = list()
+
+            # not at last layer
             if i != len(self.network) - 1:
                 for j in range(len(layer)):
                     error = 0.0
@@ -85,10 +115,11 @@ class FeedForward:
             else:
                 for j in range(len(layer)):
                     neuron = layer[j]
-                    errors.append(expected[j] - neuron['output'])
+                    errors.append(target[0, j] - neuron['output'])
+
             for j in range(len(layer)):
                 neuron = layer[j]
-                neuron['delta'] = errors[j] * self._transfer(neuron['output'])
+                neuron['delta'] = errors[j] * self._transfer_derivative(neuron['output'])
 
     def _update_weights(self, row, lr):
 
@@ -103,3 +134,12 @@ class FeedForward:
                 for j in range(len(inputs)):
                     neuron['weights'][j] += lr * neuron['delta'] * inputs[j]
                 neuron['weights'][-1] += lr * neuron['delta']
+
+    def _softmax(self, outputs: np.ndarray) -> np.ndarray:
+        """
+        Applies softmax over network outputs
+        :param outputs: output layer
+        :return: ndarray of probability distribution over classes
+        """
+        exps = np.exp(outputs)
+        return exps / exps.sum()
