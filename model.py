@@ -13,16 +13,17 @@ class FeedForward:
     def __init__(self, n_inputs, n_hidden, n_outputs):
 
         # seed random number generator
-        seed(1)
+        # seed(1)
 
         self.n_outputs = n_outputs
         self.network = list()
 
-        hidden_layer = [{'weights': [random() for i in range(n_inputs + 1)]} for i in range(n_hidden)]
+        hidden_layer = [{'weights': [random()] * (n_inputs + 1)} for i in range(n_hidden)]
         self.network.append(hidden_layer)
 
-        output_layer = [{'weights': [random() for i in range(n_hidden + 1)]} for i in range(n_outputs)]
+        output_layer = [{'weights': [random()] * (n_hidden + 1)} for i in range(n_outputs)]
         self.network.append(output_layer)
+        self.train_err = []
 
 
     def fit(self, x, y, lr, n_epochs):
@@ -45,6 +46,8 @@ class FeedForward:
                 self._update_weights(img, lr)
             print(f"> Epoch = {epoch}, lrate = {lr}, error = {err:.3f}")
 
+            self.train_err.append(err)
+
     def predict(self, x: np.ndarray) -> np.ndarray:
         """
         Used to classify the input
@@ -57,6 +60,8 @@ class FeedForward:
         for i in range(len(x)):
             outputs = self._forward(x[i, :])
             classes[i] = outputs.argmax()
+
+        classes.reshape((-1, 1))
 
         return classes
 
@@ -97,11 +102,11 @@ class FeedForward:
 
         return classes
 
-    def _transfer(self, activation):
+    def _transfer(self, z):
         """
         Transfers neuron activation using Sigmoid function
         """
-        return 1.0 / (1.0 + exp(-activation))
+        return 1.0 / (1.0 + exp(-z))
 
     def _transfer_derivative(self, output):
         """
@@ -124,22 +129,27 @@ class FeedForward:
             # hidden layer
             if i != len(self.network) - 1:
                 for j in range(len(layer)):
-                    error = 0.0
+                    err = 0.0
                     for neuron in self.network[i + 1]:
-                        error += (neuron['weights'][j] * neuron['delta'])
-                    errors.append(error)
+                        err += (neuron['weights'][j] * neuron['delta'])
+                    errors.append(err)
             else:
                 # output layer
                 for j in range(len(layer)):
                     neuron = layer[j]
-                    errors.append(target[j, :] - neuron['output'])
+                    errors.append(target[j, 0] - neuron['output'])
 
             # store error in neurons
             for j in range(len(layer)):
                 neuron = layer[j]
                 neuron['delta'] = errors[j] * self._transfer_derivative(neuron['output'])
 
-    def _update_weights(self, x, lr):
+    def _update_weights(self, x:np.ndarray, lr:float):
+        """
+        Updates weights in each layer of the network
+        :param x: input to network
+        :param lr: learning rate
+        """
 
         for i in range(len(self.network)):
 
@@ -149,7 +159,6 @@ class FeedForward:
             if i != 0:
                 inputs = [neuron['output'] for neuron in self.network[i - 1]]
 
-            # update weights in current layer
             for neuron in self.network[i]:
 
                 # update neuron weights
